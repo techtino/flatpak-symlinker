@@ -12,9 +12,9 @@ Note this is currently only setup to check for USER installed flatpak's, not sys
 
 ## Dependencies:
 
-inotify-tools
-flatpak (duhh)
-systemd to run the service, or any other init system with a custom service.
+- inotify-tools
+- flatpak (duhh)
+- systemd to run the service, or any other init system with a custom service.
 
 ## Installation:
 1. Ensure ~/.local/bin/ is in PATH. Most distros already have this setup, but if not, then: echo PATH="$HOME/.local/bin:$HOME/bin:$PATH" >> ~/.bash_profile
