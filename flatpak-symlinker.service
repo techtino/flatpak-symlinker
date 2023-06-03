@@ -1,0 +1,10 @@
+[Unit]
+Description=Symlinks flatpak's to their normal binary name, so you can call apps from terminal sanely.
+
+[Service]
+Type=simple
+ExecStart=/home/techtino/.local/bin/flatpak-symlinker
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

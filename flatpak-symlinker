@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Set default value for overwrite_disabled
+overwrite_disabled=false
+
+# Function to display usage message
+usage() {
+    echo "Usage: $0 [-f] [-d] [-h]"
+    echo "-d: Disable overwrite functionality entirely"
+    echo "-h: Display this help message"
+}
+
+# Parse command-line options
+while getopts 'fdh' opt; do
+    case "$opt" in
+        d) overwrite_disabled=true ;;
+        h) usage; exit 0 ;;
+        *) usage; exit 1 ;;
+    esac
+done
+
+# Shift positional parameters
+shift $((OPTIND-1))
+
+# Set paths for Flatpak exports and shortname bin
+flatpak_bin_exports="$HOME/.local/share/flatpak/exports/bin"
+shortname_bin_path="$HOME/.local/bin"
+
+# Function to log info messages with a timestamp
+log_info() {
+    local message="$1"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[INFO] $timestamp - $message"
+}
+
+# Function to log error messages with a timestamp
+log_error() {
+    RED='\033[0;31m'
+    NC='\033[0m'
+    local message="$1"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo -e "${RED}[ERROR] $timestamp - $message${NC}"
+}
+
+# Function to process a single modified Flatpak app
+process_modified_flatpak() {
+    local app_path="$1"
+    local short_path="$2"
+    local flatpak_name="$3"
+
+    # Check if the symlink already exists
+    if [[ -f "$short_path" ]]; then
+        if $overwrite_disabled; then
+            log_info "$flatpak_name installed, overwrite functionality is disabled. Skipping symlink creation"
+        else
+            log_info "$flatpak_name installed, overwriting existing file: $short_path"
+            ln -sf "$app_path" "$short_path"
+        fi
+    else
+        log_info "$flatpak_name installed, Symlinking $app_path to $short_path"
+        ln -s "$app_path" "$short_path"
+    fi
+}
+
+# Function to handle symlink creation and deletion
+handle_symlink() {
+    local event="$1"
+    local flatpak_name="$2"
+    local app_path="$3"
+
+    if [ "$event" = "MOVED_TO" ]; then
+        short_name=$(flatpak info $flatpak_name -m 2>/dev/null | grep command= | awk -F '=' '{print $2}' )
+
+        # Check if short_name is empty or contains unexpected characters
+        if [[ -z "$short_name" ]]; then
+            log_error "Unable to extract a valid short_name for $flatpak_name. Skipping symlink creation"
+        else
+            short_path="$shortname_bin_path/$short_name"
+            process_modified_flatpak "$app_path" "$short_path" "$flatpak_name"
+        fi
+    else
+        log_info "App $flatpak_name uninstalled: Removing broken symlinks in $shortname_bin_path"
+        find $shortname_bin_path -xtype l -delete
+    fi
+}
+
+# Monitor the directory for updates using inotifywait
+inotifywait -q -m -e MOVED_TO -e delete $flatpak_bin_exports |
+while read path event flatpak_name; do
+    flatpak_app_path=$path$flatpak_name
+    handle_symlink "$event" "$flatpak_name" "$flatpak_app_path"
+done
