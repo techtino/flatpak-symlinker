@@ -5,22 +5,11 @@ overwrite_disabled=false
 
 # Function to display usage message
 usage() {
-    echo "Usage: $0 [-f] [-d] [-h]"
+    echo "Usage: $0 [-d] [-h] [-g]"
     echo "-d: Disable overwrite functionality entirely"
     echo "-h: Display this help message"
+    echo "-g: Generate symlinks for all installed flatpaks at once"
 }
-
-# Parse command-line options
-while getopts 'fdh' opt; do
-    case "$opt" in
-        d) overwrite_disabled=true ;;
-        h) usage; exit 0 ;;
-        *) usage; exit 1 ;;
-    esac
-done
-
-# Shift positional parameters
-shift $((OPTIND-1))
 
 # Set paths for Flatpak exports and shortname bin
 flatpak_bin_exports="$HOME/.local/share/flatpak/exports/bin"
@@ -84,9 +73,42 @@ handle_symlink() {
     fi
 }
 
-# Monitor the directory for updates using inotifywait
-inotifywait -q -m -e MOVED_TO -e delete $flatpak_bin_exports |
-while read path event flatpak_name; do
-    flatpak_app_path=$path$flatpak_name
-    handle_symlink "$event" "$flatpak_name" "$flatpak_app_path"
+inotify_wait_forever() {
+    # Monitor the directory for updates using inotifywait
+    inotifywait -q -m -e MOVED_TO -e delete $flatpak_bin_exports |
+    while read path event flatpak_name; do
+        flatpak_app_path=$path$flatpak_name
+        handle_symlink "$event" "$flatpak_name" "$flatpak_app_path"
+    done
+}
+
+generate_all() {
+    flatpaks=( $(ls "$flatpak_bin_exports") )
+    [ -z "$flatpaks" ] && log_info "No installed flatpaks found" && exit 0
+
+    echo "Found installed flatpaks:"
+    for app in ${flatpaks[@]}; do echo " > $app"; done
+    read -p "Do you want me to create symlinks for these flatpaks? [Y]" -n 1 -r
+    echo    # (optional) move to a new line
+    if [[ $REPLY =~ ^[Yy]$ ]]
+    then
+        for app in ${flatpaks[@]}; do 
+            handle_symlink "MOVED_TO" "$app" "$flatpak_bin_exports/$app"
+        done
+    fi
+}
+
+# Parse command-line options
+while getopts 'dhg' opt; do
+    case "$opt" in
+        d) overwrite_disabled=true ;;
+        h) usage; exit 0 ;;
+        g) generate_all; exit $? ;;
+        *) usage; exit 1 ;;
+    esac
 done
+
+# Shift positional parameters
+shift $((OPTIND-1))
+
+inotify_wait_forever
